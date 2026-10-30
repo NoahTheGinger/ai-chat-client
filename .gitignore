@@ -17,7 +17,6 @@
 
 # misc
 .DS_Store
-*.pem
 
 # debug
 npm-debug.log*
@@ -25,7 +24,27 @@ yarn-debug.log*
 yarn-error.log*
 
 # local env files
-.env*.local
+.env
+.env.*
+*.env
+!.env.example
+
+# local credentials and private keys
+.secrets/
+secrets/
+credentials.json
+credentials.local.json
+secrets.json
+*.key
+*.pem
+*.p12
+*.pfx
+id_rsa
+id_ecdsa
+id_ed25519
+
+# runtime logs may contain private data
+*.log
 
 # vercel
 .vercel
