@@ -8,7 +8,7 @@ A modern, clean chat client for AI models with OpenRouter support and multi-prov
 - **Multi-turn Conversations**: Full conversation history with context
 - **Model Selection**: Dynamic model selection with detailed information
 - **Custom Prompts**: Configure system and developer prompts
-- **Multiple Providers**: Support for OpenRouter, OpenAI, Anthropic, and custom providers
+- **Multiple Providers**: Support for OpenRouter, OpenAI, and custom OpenAI-compatible providers (Anthropic models are available through OpenRouter)
 - **API Key Management**: In-app API key configuration (no environment variables needed)
 - **Streaming Responses**: Real-time streaming for better user experience
 - **Dynamic Model Discovery**: Automatically fetch available models from any provider
@@ -17,7 +17,7 @@ A modern, clean chat client for AI models with OpenRouter support and multi-prov
 
 ### Prerequisites
 
-- Node.js 18+ 
+- Node.js 20.9+
 - npm or yarn
 
 ### Installation
@@ -41,7 +41,7 @@ npm run dev
 
 1. **Open Settings**: Click the settings icon (⚙️) in the top-left corner
 2. **Configure API Provider**: 
-   - Select a predefined provider (OpenRouter, OpenAI, Anthropic) or add a custom one
+   - Select a predefined provider (OpenRouter or OpenAI) or add a custom one
    - Enter your API key
 3. **Select Model**: Choose from the automatically loaded model list
 4. **Set Prompts** (optional): Configure system and developer prompts
@@ -130,7 +130,7 @@ Tested providers:
 
 ### Technologies Used
 
-- **Next.js 14** - React framework with app directory
+- **Next.js 16** - React framework with app directory
 - **TypeScript** - Type safety
 - **Tailwind CSS** - Styling
 - **Headless UI** - Accessible UI components

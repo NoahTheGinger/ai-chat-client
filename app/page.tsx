@@ -10,7 +10,6 @@ import {
   XMarkIcon,
   TrashIcon,
   StopIcon,
-  Bars3Icon 
 } from '@heroicons/react/24/outline';
 import clsx from 'clsx';
 
@@ -29,13 +28,12 @@ export default function ChatPage() {
   } = useChat();
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
+  // Reload models when the provider or key changes, waiting for typing to settle
   useEffect(() => {
-    if (settings.apiProvider.apiKey) {
-      fetchModels();
-    }
-  }, [settings.apiProvider, fetchModels]);
+    const timeout = setTimeout(fetchModels, 400);
+    return () => clearTimeout(timeout);
+  }, [fetchModels]);
 
   return (
     <div className="h-full flex">
@@ -129,7 +127,10 @@ export default function ChatPage() {
         )}
 
         {/* Chat Messages */}
-        <ChatHistory messages={messages} isLoading={isLoading} />
+        <ChatHistory
+          messages={messages}
+          isLoading={isLoading && messages[messages.length - 1]?.role === 'user'}
+        />
 
         {/* Chat Input */}
         <ChatInput

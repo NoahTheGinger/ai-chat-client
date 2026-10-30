@@ -1,4 +1,14 @@
 import { ApiProvider, ChatModel, Message } from '@/types';
+import { readStream } from '@/utils/streaming';
+
+interface RawModel {
+  id: string;
+  name?: string;
+  description?: string;
+  context_length?: number;
+  max_context_length?: number;
+  pricing?: ChatModel['pricing'];
+}
 
 export class ApiClient {
   private provider: ApiProvider;
@@ -26,7 +36,7 @@ export class ApiClient {
       // Handle different API response formats
       const models = data.data || data.models || data;
       
-      return models.map((model: any) => ({
+      return models.map((model: RawModel) => ({
         id: model.id,
         name: model.name || model.id,
         description: model.description,
@@ -39,13 +49,14 @@ export class ApiClient {
     }
   }
 
-  async sendMessage(
+  async *streamMessage(
     messages: Message[],
     model: string,
     systemPrompt?: string,
     temperature: number = 0.7,
-    maxTokens: number = 1000
-  ): Promise<string> {
+    maxTokens: number = 1000,
+    signal?: AbortSignal
+  ): AsyncGenerator<string> {
     const chatMessages = messages.map(msg => ({
       role: msg.role,
       content: msg.content,
@@ -69,24 +80,29 @@ export class ApiClient {
         model,
         messages: chatMessages,
         temperature,
-        max_tokens: maxTokens,
-        stream: false,
+        ...(Number.isFinite(maxTokens) && maxTokens > 0 ? { max_tokens: maxTokens } : {}),
+        stream: true,
       }),
+      signal,
     });
 
     if (!response.ok) {
-      throw new Error(`API request failed: ${response.statusText}`);
+      const details = await response.json().then(body => body?.error?.message, () => undefined);
+      throw new Error(details || `API request failed: ${response.statusText || response.status}`);
     }
 
-    const data = await response.json();
-    
-    // Extract the response content
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) {
-      throw new Error('No content received from API');
+    // Some providers ignore stream: true and reply with plain JSON
+    if (response.headers.get('content-type')?.includes('application/json')) {
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content;
+      if (!content) {
+        throw new Error('No content received from API');
+      }
+      yield content;
+      return;
     }
 
-    return content;
+    yield* readStream(response);
   }
 }
 
@@ -100,12 +116,6 @@ export const DEFAULT_PROVIDERS = {
   openai: {
     name: 'OpenAI',
     baseUrl: 'https://api.openai.com/v1',
-    apiKey: '',
-    modelsEndpoint: '/models',
-  },
-  anthropic: {
-    name: 'Anthropic',
-    baseUrl: 'https://api.anthropic.com/v1',
     apiKey: '',
     modelsEndpoint: '/models',
   },

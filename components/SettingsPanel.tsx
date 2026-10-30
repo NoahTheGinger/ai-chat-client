@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { ChatSettings, ApiProvider, ChatModel } from '@/types';
 import { DEFAULT_PROVIDERS } from '@/utils/api';
 import ModelSelector from './ModelSelector';
@@ -30,12 +30,13 @@ export default function SettingsPanel({
   onRefreshModels
 }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('model');
-  const [customProvider, setCustomProvider] = useState({
+  const [customProvider, setCustomProvider] = useState<ApiProvider>({
     name: '',
     baseUrl: '',
     apiKey: '',
     modelsEndpoint: '/models'
   });
+  const [customSelected, setCustomSelected] = useState(false);
 
   const tabs = [
     { id: 'model' as const, name: 'Model', icon: CogIcon },
@@ -45,13 +46,7 @@ export default function SettingsPanel({
   ];
 
   const predefinedProviders = Object.values(DEFAULT_PROVIDERS);
-
-  useEffect(() => {
-    // Initialize custom provider with current settings
-    if (!predefinedProviders.some(p => p.baseUrl === settings.apiProvider.baseUrl)) {
-      setCustomProvider(settings.apiProvider);
-    }
-  }, [settings.apiProvider]);
+  const isCustom = customSelected || !predefinedProviders.some(p => p.baseUrl === settings.apiProvider.baseUrl);
 
   const handleProviderChange = (provider: ApiProvider) => {
     onSettingsChange({
@@ -59,12 +54,23 @@ export default function SettingsPanel({
       apiProvider: provider,
       selectedModel: null, // Reset model when provider changes
     });
-    onRefreshModels();
   };
 
+  // The custom provider uses the API key from the field above the form
+  const canSaveCustomProvider = Boolean(
+    customProvider.name && customProvider.baseUrl && settings.apiProvider.apiKey
+  );
+
   const handleCustomProviderSave = () => {
-    if (customProvider.name && customProvider.baseUrl && customProvider.apiKey) {
-      handleProviderChange(customProvider);
+    if (canSaveCustomProvider) {
+      const provider = {
+        ...customProvider,
+        baseUrl: customProvider.baseUrl.trim().replace(/\/+$/, ''),
+        apiKey: settings.apiProvider.apiKey,
+      };
+      setCustomProvider(provider);
+      handleProviderChange(provider);
+      setCustomSelected(false);
     }
   };
 
@@ -167,8 +173,11 @@ export default function SettingsPanel({
                     <input
                       type="radio"
                       name="provider"
-                      checked={settings.apiProvider.baseUrl === provider.baseUrl}
-                      onChange={() => handleProviderChange({ ...provider, apiKey: settings.apiProvider.apiKey })}
+                      checked={!isCustom && settings.apiProvider.baseUrl === provider.baseUrl}
+                      onChange={() => {
+                        setCustomSelected(false);
+                        handleProviderChange({ ...provider, apiKey: settings.apiProvider.apiKey });
+                      }}
                       className="mr-2"
                     />
                     <span className="text-sm">{provider.name}</span>
@@ -178,8 +187,8 @@ export default function SettingsPanel({
                   <input
                     type="radio"
                     name="provider"
-                    checked={!predefinedProviders.some(p => p.baseUrl === settings.apiProvider.baseUrl)}
-                    onChange={() => setActiveTab('api')}
+                    checked={isCustom}
+                    onChange={() => setCustomSelected(true)}
                     className="mr-2"
                   />
                   <span className="text-sm">Custom</span>
@@ -203,7 +212,7 @@ export default function SettingsPanel({
               />
             </div>
 
-            {!predefinedProviders.some(p => p.baseUrl === settings.apiProvider.baseUrl) && (
+            {isCustom && (
               <div className="space-y-3 border-t pt-4">
                 <h4 className="text-sm font-medium text-gray-900">Custom Provider</h4>
                 
@@ -242,10 +251,14 @@ export default function SettingsPanel({
                 
                 <button
                   onClick={handleCustomProviderSave}
-                  className="btn-primary text-sm py-1 px-3"
+                  disabled={!canSaveCustomProvider}
+                  className="btn-primary text-sm py-1 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Save Custom Provider
                 </button>
+                {!settings.apiProvider.apiKey && (
+                  <p className="text-xs text-gray-500">Enter your API key above to save.</p>
+                )}
               </div>
             )}
           </div>
@@ -283,7 +296,7 @@ export default function SettingsPanel({
                 type="number"
                 min="1"
                 max="4000"
-                value={settings.maxTokens}
+                value={Number.isNaN(settings.maxTokens) ? '' : settings.maxTokens}
                 onChange={(e) => onSettingsChange({ ...settings, maxTokens: parseInt(e.target.value) })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />

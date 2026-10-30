@@ -19,10 +19,15 @@ export function useChat() {
   });
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const modelsRequestRef = useRef(0);
 
   const fetchModels = useCallback(async () => {
+    // Only the most recent request may update state, so a slow response can't overwrite a newer one
+    const requestId = ++modelsRequestRef.current;
+
     if (!settings.apiProvider.apiKey) {
       setModels([]);
+      setIsLoadingModels(false);
       return;
     }
 
@@ -30,19 +35,25 @@ export function useChat() {
     try {
       const apiClient = new ApiClient(settings.apiProvider);
       const fetchedModels = await apiClient.fetchModels();
+      if (requestId !== modelsRequestRef.current) return;
       setModels(fetchedModels);
-      
+
       // Auto-select first model if none selected
-      if (!settings.selectedModel && fetchedModels.length > 0) {
-        setSettings(prev => ({ ...prev, selectedModel: fetchedModels[0] }));
-      }
+      setSettings(prev =>
+        prev.selectedModel || fetchedModels.length === 0
+          ? prev
+          : { ...prev, selectedModel: fetchedModels[0] }
+      );
     } catch (error) {
+      if (requestId !== modelsRequestRef.current) return;
       console.error('Failed to fetch models:', error);
       setModels([]);
     } finally {
-      setIsLoadingModels(false);
+      if (requestId === modelsRequestRef.current) {
+        setIsLoadingModels(false);
+      }
     }
-  }, [settings.apiProvider, settings.selectedModel]);
+  }, [settings.apiProvider]);
 
   const sendMessage = useCallback(async (content: string) => {
     if (!settings.selectedModel || !settings.apiProvider.apiKey) {
@@ -61,12 +72,11 @@ export function useChat() {
     setMessages(newMessages);
     setIsLoading(true);
 
-    // Cancel any existing request
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
-    abortControllerRef.current = new AbortController();
+    const assistantId = Date.now().toString() + '-assistant';
+    let assistantContent = '';
 
     try {
       const apiClient = new ApiClient(settings.apiProvider);
@@ -74,50 +84,63 @@ export function useChat() {
         .filter(Boolean)
         .join('\n\n');
 
-      const responseContent = await apiClient.sendMessage(
+      const stream = apiClient.streamMessage(
         newMessages,
         settings.selectedModel.id,
         combinedPrompt,
         settings.temperature,
-        settings.maxTokens
+        settings.maxTokens,
+        controller.signal
       );
 
-      const assistantMessage: Message = {
-        id: Date.now().toString() + '-assistant',
-        role: 'assistant',
-        content: responseContent,
-        timestamp: new Date(),
-      };
+      for await (const token of stream) {
+        assistantContent += token;
+        const text = assistantContent;
 
-      setMessages([...newMessages, assistantMessage]);
-      setIsLoading(false);
+        // The assistant message is created on the first token, then grows in place
+        setMessages(prev =>
+          prev.some(m => m.id === assistantId)
+            ? prev.map(m => (m.id === assistantId ? { ...m, content: text } : m))
+            : [...prev, { id: assistantId, role: 'assistant', content: text, timestamp: new Date() }]
+        );
+      }
+
+      if (!assistantContent) {
+        throw new Error('No content received from API');
+      }
     } catch (error) {
-      console.error('Error sending message:', error);
-      setIsLoading(false);
-      
-      const errorMessage: Message = {
-        id: Date.now().toString() + '-error',
-        role: 'assistant',
-        content: 'Sorry, there was an error processing your request. Please check your API key and try again.',
-        timestamp: new Date(),
-      };
-      
-      setMessages([...newMessages, errorMessage]);
+      // Stopping or clearing aborts the request; keep whatever has streamed so far
+      if (!controller.signal.aborted) {
+        console.error('Error sending message:', error);
+
+        const detail = error instanceof Error && error.message ? ` (${error.message})` : '';
+        const errorMessage: Message = {
+          id: Date.now().toString() + '-error',
+          role: 'assistant',
+          content: `Sorry, there was an error processing your request${detail}. Please check your API key and try again.`,
+          timestamp: new Date(),
+        };
+
+        setMessages(prev => [...prev, errorMessage]);
+      }
+    } finally {
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+        setIsLoading(false);
+      }
     }
   }, [messages, settings]);
 
   const clearChat = useCallback(() => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
     setMessages([]);
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
     setIsLoading(false);
   }, []);
 
   const stopGeneration = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
     setIsLoading(false);
   }, []);
 
